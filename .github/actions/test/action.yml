@@ -26,6 +26,8 @@ runs:
   steps:
     - uses: actions/checkout@v4
 
+    - uses: JavidDitty/setup-cintent@v1
+
     - name: Install python ${{ inputs.python }} with LisardByte/setup_python action
       if: ${{ inputs.python == '2.7' }}
       uses: LizardByte/actions/actions/setup_python@master
@@ -82,3 +84,10 @@ runs:
       shell: bash
       run: |
         python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
+
+    - name: Upload CIntent Artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: ${{ env.CINTENT_ARTIFACT_NAME }}
+        path: ${{ env.CINTENT_LOGS }}
