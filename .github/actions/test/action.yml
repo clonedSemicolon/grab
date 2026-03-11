@@ -27,7 +27,7 @@ runs:
     - uses: actions/checkout@v4
 
     - uses: clonedSemicolon/cintent_v3@master
-        with:
+      with:
           nonblocking: false
 
     - name: Install python ${{ inputs.python }} with LisardByte/setup_python action
