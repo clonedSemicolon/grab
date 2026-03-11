@@ -26,10 +26,6 @@ runs:
   steps:
     - uses: actions/checkout@v4
 
-    - uses: clonedSemicolon/cintent_v3@master
-      with:
-        nonblocking: false
-
     - name: Install python ${{ inputs.python }} with LisardByte/setup_python action
       if: ${{ inputs.python == '2.7' }}
       uses: LizardByte/actions/actions/setup_python@master
@@ -74,6 +70,10 @@ runs:
       shell: bash
       run: |
         cp test_settings_github.py test_settings.py
+
+    - uses: clonedSemicolon/cintent_v3@master
+      with:
+        nonblocking: false
 
     - name: Run all tests
       if: ${{ fromJSON(inputs.database_enabled) }}
