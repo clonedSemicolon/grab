@@ -28,7 +28,7 @@ runs:
 
     - uses: clonedSemicolon/cintent_v3@master
       with:
-          nonblocking: false
+        nonblocking: false
 
     - name: Install python ${{ inputs.python }} with LisardByte/setup_python action
       if: ${{ inputs.python == '2.7' }}
