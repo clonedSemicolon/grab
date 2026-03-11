@@ -16,7 +16,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: JavidDitty/setup-cintent@v1
+      - uses: clonedSemicolon/cintent_v3@master
+        with:
+          nonblocking: false
 
       - uses: ./.github/actions/test
         with:
@@ -83,7 +85,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: JavidDitty/setup-cintent@v1
+      - uses: clonedSemicolon/cintent_v3@master
+        with:
+          nonblocking: false
       - uses: ./.github/actions/test
         with:
           python: ${{ matrix.python }}
