@@ -28,6 +28,13 @@ jobs:
           network_service: ${{ matrix.network_service }}
           grab_transport: ${{ matrix.grab_transport }}
 
+      - name: Upload CIntent Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ env.CINTENT_ARTIFACT_NAME }}
+          path: ${{ env.CINTENT_LOGS }}
+
   with-db:
     runs-on: ubuntu-latest
     strategy:
