@@ -65,15 +65,15 @@ runs:
         mv dist/*.whl dist/grab-0.0.1-py2.py3-none-any.whl
         pip install -U "grab[urllib3,pyquery] @ file://$(pwd)/dist/grab-0.0.1-py2.py3-none-any.whl"
 
+    - uses: clonedSemicolon/setup-dynapyt@v1
+
     - name: Prepare database connection config
       if: ${{ fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
         cp test_settings_github.py test_settings.py
 
-    - uses: clonedSemicolon/cintent_v3@master
-      with:
-        nonblocking: false
+   
 
     - name: Run all tests
       if: ${{ fromJSON(inputs.database_enabled) }}
@@ -87,9 +87,9 @@ runs:
       run: |
         python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
 
-    - name: Upload CIntent Artifacts
+    - name: Upload DynaPyt Call Graph
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: ${{ env.CINTENT_ARTIFACT_NAME }}
-        path: ${{ env.CINTENT_LOGS }}
+        name: dynapyt-callgraph-${{ inputs.network_service }}-${{ inputs.grab_transport }}
+        path: ${{ env.DYNAPYT_OUTPUT }}
