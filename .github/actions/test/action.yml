@@ -65,7 +65,7 @@ runs:
         mv dist/*.whl dist/grab-0.0.1-py2.py3-none-any.whl
         pip install -U "grab[urllib3,pyquery] @ file://$(pwd)/dist/grab-0.0.1-py2.py3-none-any.whl"
 
-    - uses: clonedSemicolon/setup-dynapyt@master
+    
 
     - name: Prepare database connection config
       if: ${{ fromJSON(inputs.database_enabled) }}
@@ -73,7 +73,10 @@ runs:
       run: |
         cp test_settings_github.py test_settings.py
 
-   
+   - name: Setup DynaPyt
+        uses: clonedSemicolon/seytup-dynapyt@master
+        with:
+          directory: "grab"
 
     - name: Run all tests
       if: ${{ fromJSON(inputs.database_enabled) }}
@@ -87,9 +90,14 @@ runs:
       run: |
         python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
 
-    - name: Upload DynaPyt Call Graph
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: dynapyt-callgraph-${{ inputs.network_service }}-${{ inputs.grab_transport }}
-        path: ${{ env.DYNAPYT_OUTPUT }}
+    - name: Collect DynaPyt output
+        if: always()
+        run: python -m dynapyt.post_run --output_dir=dynapyt-output || true
+
+      - name: Upload DynaPyt artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynapyt-results
+          path: dynapyt-output/
+          retention-days: 30
