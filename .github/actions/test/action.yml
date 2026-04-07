@@ -96,6 +96,7 @@ runs:
       shell: bash
       run: |
         pip install fire -q
+        mkdir -p dynapyt-output
         python -m dynapyt.post_run --output_dir=dynapyt-output || true
 
     - name: Upload DynaPyt artifacts
