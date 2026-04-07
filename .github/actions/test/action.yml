@@ -79,13 +79,7 @@ runs:
     - name: Fix CallGraph logging
       shell: bash
       run: |
-        python -c "
-import dynapyt.analyses.CallGraph as m
-path = m.__file__
-text = open(path).read()
-text = text.replace('logging.basicConfig(', 'logging.basicConfig(force=True, ')
-open(path, 'w').write(text)
-"
+        python -c "import dynapyt.analyses.CallGraph as m; p=m.__file__; t=open(p).read(); t=t.replace('logging.basicConfig(','logging.basicConfig(force=True, '); open(p,'w').write(t)"
 
     - name: Run DynaPyt analysis (with database)
       if: ${{ fromJSON(inputs.database_enabled) }}
