@@ -1,107 +1,90 @@
-name: test-action
+name: Test
+on: ["push", "pull_request"]
+jobs:
 
+  without-db:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+        python: ['3.13']
+        network_service: ['multicurl', 'threaded']
+        grab_transport: ['pycurl', 'urllib3']
+        exclude:
+          - network_service: 'multicurl'
+            grab_transport: 'urllib3'
 
-on: workflow_dispatch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/test
+        with:
+          python: ${{ matrix.python }}
+          database_enabled: false
+          os: ${{ matrix.os }}
+          network_service: ${{ matrix.network_service }}
+          grab_transport: ${{ matrix.grab_transport }}
 
+  with-db:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['2.7', '3.9', '3.13']
+        network_service: ['multicurl', 'threaded']
+        grab_transport: ['pycurl', 'urllib3']
+        exclude:
+          - network_service: 'multicurl'
+            grab_transport: 'urllib3'
 
-inputs:
-  python:
-    type: string
-    required: true
-  database_enabled:
-    type: boolean
-    required: true
-  os:
-    type: string
-    required: true
-  network_service:
-    type: string
-    required: true
-  grab_transport:
-    type: string
-    required: true
+    services:
+      redis:
+        image: redis:7.2
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 2s
+          --health-retries 5
+      mysql:
+        image: mysql:8.0
+        env:
+          # same config must be in test_settings.py
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+          MYSQL_USER: github
+          MYSQL_PASSWORD: github
+          MYSQL_DATABASE: grab_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -uroot -prootpassword"
+          --health-interval=5s
+          --health-timeout=2s
+          --health-retries=10
+      postgres:
+        image: postgres:16
+        env:
+          # same config must be in test_settings.py
+          POSTGRES_USER: github
+          POSTGRES_PASSWORD: github
+          POSTGRES_DB: grab_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser"
+          --health-interval 5s
+          --health-timeout 2s
+          --health-retries 10
+      mongodb:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
 
-runs:
-  using: "composite"
-  steps:
-    - uses: actions/checkout@v4
-
-    - name: Install python ${{ inputs.python }} with LisardByte/setup_python action
-      if: ${{ inputs.python == '2.7' }}
-      uses: LizardByte/actions/actions/setup_python@master
-      with:
-        python-version: ${{ inputs.python }}
-
-    - name: Install python ${{ inputs.python }} with standard setup-python action
-      if: ${{ inputs.python  != '2.7' }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ inputs.python }}
-
-    - name: Install deps
-      shell: bash
-      run: |
-        pip install -U -r requirements_dev.txt
-
-    - name: Install deps to build pycurl
-      if: ${{ inputs.os == 'ubuntu-latest' }}
-      shell: bash
-      run: |
-        sudo apt install libcurl4-openssl-dev libssl-dev
-
-    - name: Install database deps
-      if: ${{ fromJSON(inputs.database_enabled) }}
-      shell: bash
-      run: |
-        pip install -r requirements_dev_backend.txt
-
-    - name: Build wheel and install
-      shell: pwsh
-      run: |
-        make build
-        mv grab backup_grab
-        mv dist/*.whl dist/grab-0.0.1-py2.py3-none-any.whl
-        pip install -U "grab[urllib3,pyquery] @ file://$(pwd)/dist/grab-0.0.1-py2.py3-none-any.whl"
-
-    - name: Prepare database connection config
-      if: ${{ fromJSON(inputs.database_enabled) }}
-      shell: bash
-      run: |
-        cp test_settings_github.py test_settings.py
-
-    - name: Install DynaPyt
-      shell: bash
-      run: pip install dynapyt
-
-    - name: Instrument grab with DynaPyt
-      shell: bash
-      run: |
-        GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
-        python -m dynapyt.instrument.instrument --dir "$GRAB_PKG"
-
-    - name: Run all tests with DynaPyt call graph
-      if: ${{ fromJSON(inputs.database_enabled) }}
-      shell: bash
-      run: |
-        python -m dynapyt.run_analysis --entry runtest.py --analysis dynapyt.analyses.CallGraph -- --test-all --backend-redis --backend-mongodb --backend-mysql --backend-postgresql
-
-    - name: Run only non-database tests with DynaPyt call graph
-      if: ${{ ! fromJSON(inputs.database_enabled) }}
-      shell: bash
-      run: |
-        python -m dynapyt.run_analysis --entry runtest.py --analysis dynapyt.analyses.CallGraph -- --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
-
-    - name: Collect DynaPyt output
-      if: always()
-      shell: bash
-      run: |
-        pip install fire -q
-        python -m dynapyt.post_run --output_dir=dynapyt-output || true
-
-    - name: Upload DynaPyt artifacts
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: dynapyt-results
-        path: dynapyt-output/
-        retention-days: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/test
+        with:
+          python: ${{ matrix.python }}
+          database_enabled: true
+          os: 'ubuntu-latest'
+          network_service: ${{ matrix.network_service }}
+          grab_transport: ${{ matrix.grab_transport }}
