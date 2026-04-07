@@ -52,8 +52,6 @@ runs:
         pip install -r requirements_dev_backend.txt
 
     - name: Build wheel and install
-      # step in composite action requires shell be specified
-      # this step runs ok both on windown and linux if shell is "pwsh"
       shell: pwsh
       run: |
         make build
@@ -71,37 +69,36 @@ runs:
       shell: bash
       run: pip install dynapyt
 
-     - name: Instrument grab with DynaPyt
-       shell: bash
-       run: |
-          GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
-          python -m dynapyt.instrument.instrument --dir "$GRAB_PKG"
+    - name: Instrument grab with DynaPyt
+      shell: bash
+      run: |
+        GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
+        python -m dynapyt.instrument.instrument --dir "$GRAB_PKG"
 
-    - name: Run all tests
+    - name: Run all tests with DynaPyt call graph
       if: ${{ fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
-        python runtest.py --test-all --backend-redis --backend-mongodb --backend-mysql --backend-postgresql
+        python -m dynapyt.run_analysis --entry runtest.py --analysis dynapyt.analyses.CallGraph -- --test-all --backend-redis --backend-mongodb --backend-mysql --backend-postgresql
 
-    - name: Run only non-database tests
+    - name: Run only non-database tests with DynaPyt call graph
       if: ${{ ! fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
-        python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
+        python -m dynapyt.run_analysis --entry runtest.py --analysis dynapyt.analyses.CallGraph -- --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
 
     - name: Collect DynaPyt output
       if: always()
       shell: bash
       run: |
-          pip install fire -q
-          mkdir -p dynapyt-output
-          python -m dynapyt.post_run --output_dir=dynapyt-output || true
-
+        pip install fire -q
+        mkdir -p dynapyt-output
+        python -m dynapyt.post_run --output_dir=dynapyt-output || true
 
     - name: Upload DynaPyt artifacts
       if: always()
       uses: actions/upload-artifact@v4
       with:
-          name: dynapyt-results
-          path: dynapyt-output/
-          retention-days: 30
+        name: dynapyt-results
+        path: dynapyt-output/
+        retention-days: 30
