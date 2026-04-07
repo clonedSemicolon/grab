@@ -65,11 +65,24 @@ runs:
       run: |
         cp test_settings_github.py test_settings.py
 
-    - name: Install DynaPyt
+    - name: Check DynaPyt compatibility
       shell: bash
-      run: pip install dynapyt
+      run: |
+        PYTHON_MINOR=$(python -c "import sys; print(sys.version_info.minor)")
+        if [ "$PYTHON_MINOR" -ge 13 ]; then
+          echo "::warning::DynaPyt instrumentation not supported on Python 3.13+, skipping"
+          echo "SKIP_DYNAPYT=true" >> "$GITHUB_ENV"
+        else
+          echo "SKIP_DYNAPYT=false" >> "$GITHUB_ENV"
+        fi
+
+    - name: Install DynaPyt
+      if: ${{ env.SKIP_DYNAPYT != 'true' }}
+      shell: bash
+      run: pip install "dynapyt>=4.0.0"
 
     - name: Instrument grab with DynaPyt
+      if: ${{ env.SKIP_DYNAPYT != 'true' }}
       shell: bash
       run: |
         GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
@@ -78,6 +91,7 @@ runs:
           --analysis dynapyt.analyses.TraceAll.TraceAll
 
     - name: Prepare DynaPyt session
+      if: ${{ env.SKIP_DYNAPYT != 'true' }}
       shell: bash
       run: |
         SESSION_ID=$(python -c "import uuid; print(uuid.uuid4())")
@@ -86,20 +100,20 @@ runs:
         mkdir -p dynapyt-coverage
         echo "DYNAPYT_COVERAGE=$PWD/dynapyt-coverage" >> "$GITHUB_ENV"
 
-    - name: Run all tests with DynaPyt (with database)
+    - name: Run all tests (with database)
       if: ${{ fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
         python runtest.py --test-all --backend-redis --backend-mongodb --backend-mysql --backend-postgresql
 
-    - name: Run all tests with DynaPyt (no database)
+    - name: Run all tests (no database)
       if: ${{ ! fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
         python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
 
     - name: Collect DynaPyt output
-      if: always()
+      if: ${{ always() && env.SKIP_DYNAPYT != 'true' }}
       shell: bash
       run: |
         mkdir -p dynapyt-output
