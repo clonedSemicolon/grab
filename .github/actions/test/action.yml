@@ -99,6 +99,6 @@ runs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: dynapyt-results
+        name: dynapyt-results-${{ inputs.python }}-${{ inputs.os }}-${{ inputs.network_service }}-${{ inputs.grab_transport }}-db${{ inputs.database_enabled }}
         path: dynapyt-output/
         retention-days: 30
