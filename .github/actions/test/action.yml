@@ -67,6 +67,16 @@ runs:
       run: |
         cp test_settings_github.py test_settings.py
 
+    - name: Install DynaPyt
+      shell: bash
+      run: pip install dynapyt
+
+     - name: Instrument grab with DynaPyt
+       shell: bash
+       run: |
+          GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
+          python -m dynapyt.instrument.instrument --dir "$GRAB_PKG"
+
     - name: Run all tests
       if: ${{ fromJSON(inputs.database_enabled) }}
       shell: bash
@@ -78,3 +88,20 @@ runs:
       shell: bash
       run: |
         python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
+
+    - name: Collect DynaPyt output
+      if: always()
+      shell: bash
+      run: |
+          pip install fire -q
+          mkdir -p dynapyt-output
+          python -m dynapyt.post_run --output_dir=dynapyt-output || true
+
+
+    - name: Upload DynaPyt artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+          name: dynapyt-results
+          path: dynapyt-output/
+          retention-days: 30
