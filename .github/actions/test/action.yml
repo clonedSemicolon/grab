@@ -73,14 +73,19 @@ runs:
       shell: bash
       run: |
         python -m dynapyt.run_instrumentation \
-          --directory grab/ \
+          --directory backup_grab/ \
           --analysis dynapyt.analyses.CallGraph.CallGraph
 
     - name: Fix CallGraph logging
       shell: bash
       run: |
-        CALLGRAPH=$(python -c "import dynapyt.analyses.CallGraph; print(dynapyt.analyses.CallGraph.__file__)")
-        sed -i 's/logging.basicConfig(/logging.basicConfig(force=True, /' "$CALLGRAPH"
+        python -c "
+import dynapyt.analyses.CallGraph as m
+path = m.__file__
+text = open(path).read()
+text = text.replace('logging.basicConfig(', 'logging.basicConfig(force=True, ')
+open(path, 'w').write(text)
+"
 
     - name: Run DynaPyt analysis (with database)
       if: ${{ fromJSON(inputs.database_enabled) }}
