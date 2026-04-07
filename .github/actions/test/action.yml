@@ -72,8 +72,10 @@ runs:
     - name: Instrument grab with DynaPyt
       shell: bash
       run: |
+        GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
+        echo "Instrumenting installed grab at: $GRAB_PKG"
         python -m dynapyt.run_instrumentation \
-          --directory backup_grab/ \
+          --directory "$GRAB_PKG" \
           --analysis dynapyt.analyses.CallGraph.CallGraph
 
     - name: Fix CallGraph logging
@@ -104,10 +106,14 @@ runs:
       shell: bash
       run: |
         mkdir -p dynapyt-output
+        # The call graph is written to dynapyt.json in the working directory
         cp dynapyt.json dynapyt-output/ 2>/dev/null || true
-        cp -r dynapyt_output/ dynapyt-output/ 2>/dev/null || true
-        find . -maxdepth 2 -name "*.json" -path "*dynapyt*" ! -path "./dynapyt-output/*" \
-          -exec cp {} dynapyt-output/ \; 2>/dev/null || true
+        # Also grab any output from dynapyt_output/ folder
+        cp -r dynapyt_output/ dynapyt-output/dynapyt_output 2>/dev/null || true
+        echo "=== Artifacts collected ==="
+        ls -la dynapyt-output/
+        echo "=== dynapyt.json size ==="
+        wc -c dynapyt-output/dynapyt.json 2>/dev/null || echo "dynapyt.json not found or empty"
 
     - name: Upload DynaPyt artifacts
       if: always()
