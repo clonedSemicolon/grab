@@ -53,7 +53,7 @@ jobs:
 
       # ── DynaPyt additions ───────────────────────────────────────────
       - name: Install DynaPyt
-        run: pip install dynapyt libcst pytest-timeout
+        run: pip install dynapyt libcst
 
       - name: Instrument grab and tests with DynaPyt
         run: |
@@ -89,23 +89,46 @@ jobs:
 
       - name: Run tests with DynaPyt (with database)
         if: ${{ inputs.database_enabled }}
+        env:
+          DYNAPYT_NETWORK_SERVICE: ${{ inputs.network_service }}
+          DYNAPYT_GRAB_TRANSPORT: ${{ inputs.grab_transport }}
         run: |
           cat > _entry.py << 'EOF'
-          import pytest
-          pytest.main(["--import-mode=importlib", "--timeout=300", "-p", "no:logging",
-                        "--backend-redis", "--backend-mongodb", "--backend-mysql", "--backend-postgresql", "tests/"])
+          import sys, os
+          _orig_exit = sys.exit
+          sys.exit = lambda code=0: None
+          sys.argv = [
+              "runtest.py", "--test-all",
+              "--network-service=" + os.environ.get("DYNAPYT_NETWORK_SERVICE", "tornado"),
+              "--grab-transport=" + os.environ.get("DYNAPYT_GRAB_TRANSPORT", "urllib3"),
+              "--backend-mongodb", "--backend-redis",
+              "--backend-mysql", "--backend-postgresql",
+          ]
+          import runtest
+          runtest.main()
+          sys.exit = _orig_exit
           EOF
           python -c "import pathlib,textwrap;p=pathlib.Path('_entry.py');p.write_text(textwrap.dedent(p.read_text()))"
-          # run_analysis exits 0 even when tests fail (pytest.main returns, not sys.exit)
-          # If it exits non-zero here there is a genuine crash — let the step fail visibly.
           python -m dynapyt.run_analysis --entry _entry.py --analysis _patched_callgraph.PatchedCallGraph
 
       - name: Run tests with DynaPyt (no database)
         if: ${{ !inputs.database_enabled }}
+        env:
+          DYNAPYT_NETWORK_SERVICE: ${{ inputs.network_service }}
+          DYNAPYT_GRAB_TRANSPORT: ${{ inputs.grab_transport }}
         run: |
           cat > _entry.py << 'EOF'
-          import pytest
-          pytest.main(["--import-mode=importlib", "--timeout=300", "-p", "no:logging", "tests/"])
+          import sys, os
+          _orig_exit = sys.exit
+          sys.exit = lambda code=0: None
+          sys.argv = [
+              "runtest.py", "--test-all",
+              "--network-service=" + os.environ.get("DYNAPYT_NETWORK_SERVICE", "tornado"),
+              "--grab-transport=" + os.environ.get("DYNAPYT_GRAB_TRANSPORT", "urllib3"),
+          ]
+          import runtest
+          runtest.main()
+          sys.exit = _orig_exit
           EOF
           python -c "import pathlib,textwrap;p=pathlib.Path('_entry.py');p.write_text(textwrap.dedent(p.read_text()))"
           python -m dynapyt.run_analysis --entry _entry.py --analysis _patched_callgraph.PatchedCallGraph
