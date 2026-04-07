@@ -32,7 +32,7 @@ runs:
       if: ${{ inputs.python  != '2.7' }}
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ inputs.python }}
+        python-version: "3.10"
 
     - name: Install deps
       shell: bash
@@ -72,10 +72,8 @@ runs:
     - name: Instrument grab with DynaPyt
       shell: bash
       run: |
-        GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
-        echo "Instrumenting installed grab at: $GRAB_PKG"
         python -m dynapyt.run_instrumentation \
-          --directory "$GRAB_PKG" \
+          --directory tests/ \
           --analysis dynapyt.analyses.CallGraph.CallGraph
 
     - name: Fix CallGraph logging
@@ -90,7 +88,7 @@ runs:
         echo 'import pytest; pytest.main(["--import-mode=importlib", "--timeout=300", "--backend-redis", "--backend-mongodb", "--backend-mysql", "--backend-postgresql", "tests/"])' > run_tests_dynapyt.py
         python -m dynapyt.run_analysis \
           --entry run_tests_dynapyt.py \
-          --analysis dynapyt.analyses.CallGraph.CallGraph || true
+          --analysis dynapyt.analyses.CallGraph.CallGraph
 
     - name: Run DynaPyt analysis (no database)
       if: ${{ ! fromJSON(inputs.database_enabled) }}
@@ -99,7 +97,7 @@ runs:
         echo 'import pytest; pytest.main(["--import-mode=importlib", "--timeout=300", "tests/"])' > run_tests_dynapyt.py
         python -m dynapyt.run_analysis \
           --entry run_tests_dynapyt.py \
-          --analysis dynapyt.analyses.CallGraph.CallGraph || true
+          --analysis dynapyt.analyses.CallGraph.CallGraph
 
     - name: Collect DynaPyt output
       if: always()
