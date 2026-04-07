@@ -67,7 +67,7 @@ runs:
 
     - name: Install DynaPyt
       shell: bash
-      run: pip install libcst git+https://github.com/sola-st/DynaPyt.git
+      run: pip install pytest libcst git+https://github.com/sola-st/DynaPyt.git
 
     - name: Instrument grab with DynaPyt
       shell: bash
