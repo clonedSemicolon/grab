@@ -1,9 +1,5 @@
 name: test-action
-
-
 on: workflow_dispatch
-
-
 inputs:
   python:
     type: string
