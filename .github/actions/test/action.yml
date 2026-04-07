@@ -65,61 +65,50 @@ runs:
       run: |
         cp test_settings_github.py test_settings.py
 
-    - name: Check DynaPyt compatibility
-      shell: bash
-      run: |
-        PYTHON_MINOR=$(python -c "import sys; print(sys.version_info.minor)")
-        if [ "$PYTHON_MINOR" -ge 13 ]; then
-          echo "::warning::DynaPyt instrumentation not supported on Python 3.13+, skipping"
-          echo "SKIP_DYNAPYT=true" >> "$GITHUB_ENV"
-        else
-          echo "SKIP_DYNAPYT=false" >> "$GITHUB_ENV"
-        fi
-
     - name: Install DynaPyt
-      if: ${{ env.SKIP_DYNAPYT != 'true' }}
       shell: bash
-      run: pip install "dynapyt>=4.0.0"
+      run: pip install libcst git+https://github.com/sola-st/DynaPyt.git
 
     - name: Instrument grab with DynaPyt
-      if: ${{ env.SKIP_DYNAPYT != 'true' }}
       shell: bash
       run: |
-        GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
         python -m dynapyt.run_instrumentation \
-          --directory "$GRAB_PKG" \
-          --analysis dynapyt.analyses.TraceAll.TraceAll
+          --directory grab/ \
+          --analysis dynapyt.analyses.CallGraph.CallGraph
 
-    - name: Prepare DynaPyt session
-      if: ${{ env.SKIP_DYNAPYT != 'true' }}
+    - name: Fix CallGraph logging
       shell: bash
       run: |
-        SESSION_ID=$(python -c "import uuid; print(uuid.uuid4())")
-        echo "DYNAPYT_SESSION_ID=$SESSION_ID" >> "$GITHUB_ENV"
-        echo "dynapyt.analyses.TraceAll.TraceAll" > "/tmp/dynapyt_analyses-${SESSION_ID}.txt"
-        mkdir -p dynapyt-coverage
-        echo "DYNAPYT_COVERAGE=$PWD/dynapyt-coverage" >> "$GITHUB_ENV"
+        CALLGRAPH=$(python -c "import dynapyt.analyses.CallGraph; print(dynapyt.analyses.CallGraph.__file__)")
+        sed -i 's/logging.basicConfig(/logging.basicConfig(force=True, /' "$CALLGRAPH"
 
-    - name: Run all tests (with database)
+    - name: Run DynaPyt analysis (with database)
       if: ${{ fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
-        python runtest.py --test-all --backend-redis --backend-mongodb --backend-mysql --backend-postgresql
+        echo 'import pytest; pytest.main(["--import-mode=importlib", "--timeout=300", "--backend-redis", "--backend-mongodb", "--backend-mysql", "--backend-postgresql", "tests/"])' > run_tests_dynapyt.py
+        python -m dynapyt.run_analysis \
+          --entry run_tests_dynapyt.py \
+          --analysis dynapyt.analyses.CallGraph.CallGraph || true
 
-    - name: Run all tests (no database)
+    - name: Run DynaPyt analysis (no database)
       if: ${{ ! fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
-        python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
+        echo 'import pytest; pytest.main(["--import-mode=importlib", "--timeout=300", "tests/"])' > run_tests_dynapyt.py
+        python -m dynapyt.run_analysis \
+          --entry run_tests_dynapyt.py \
+          --analysis dynapyt.analyses.CallGraph.CallGraph || true
 
     - name: Collect DynaPyt output
-      if: ${{ always() && env.SKIP_DYNAPYT != 'true' }}
+      if: always()
       shell: bash
       run: |
         mkdir -p dynapyt-output
-        python -m dynapyt.post_run \
-          --coverage_dir=dynapyt-coverage \
-          --output_dir=dynapyt-output || true
+        cp dynapyt.json dynapyt-output/ 2>/dev/null || true
+        cp -r dynapyt_output/ dynapyt-output/ 2>/dev/null || true
+        find . -maxdepth 2 -name "*.json" -path "*dynapyt*" ! -path "./dynapyt-output/*" \
+          -exec cp {} dynapyt-output/ \; 2>/dev/null || true
 
     - name: Upload DynaPyt artifacts
       if: always()
