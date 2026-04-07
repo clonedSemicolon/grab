@@ -66,8 +66,6 @@ runs:
         pip install -U "grab[urllib3,pyquery] @ file://$(pwd)/dist/grab-0.0.1-py2.py3-none-any.whl"
 
     - uses: clonedSemicolon/setup-dynapyt@master
-      with:
-        package: grab
 
     - name: Prepare database connection config
       if: ${{ fromJSON(inputs.database_enabled) }}
