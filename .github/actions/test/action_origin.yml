@@ -67,6 +67,8 @@ runs:
       run: |
         cp test_settings_github.py test_settings.py
 
+    - uses: clonedSemicolon/setup-cintent@main
+
     - name: Run all tests
       if: ${{ fromJSON(inputs.database_enabled) }}
       shell: bash
@@ -78,3 +80,10 @@ runs:
       shell: bash
       run: |
         python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
+
+    - name: Upload CIntent Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ env.CINTENT_ARTIFACT_NAME }}
+          path: ${{ env.CINTENT_LOGS }}
