@@ -6,8 +6,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest]
-        python: ['3.13']
+        os: [ubuntu-latest]
+        python: ['3.10']
         network_service: ['multicurl', 'threaded']
         grab_transport: ['pycurl', 'urllib3']
         exclude:
