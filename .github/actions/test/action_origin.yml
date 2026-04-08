@@ -1,0 +1,80 @@
+name: test-action
+
+inputs:
+  python:
+    type: string
+    required: true
+  database_enabled:
+    type: boolean
+    required: true
+  os:
+    type: string
+    required: true
+  network_service:
+    type: string
+    required: true
+  grab_transport:
+    type: string
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+
+    - name: Install python ${{ inputs.python }} with LisardByte/setup_python action
+      if: ${{ inputs.python == '2.7' }}
+      uses: LizardByte/actions/actions/setup_python@master
+      with:
+        python-version: ${{ inputs.python }}
+
+    - name: Install python ${{ inputs.python }} with standard setup-python action
+      if: ${{ inputs.python  != '2.7' }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python }}
+
+    - name: Install deps
+      shell: bash
+      run: |
+        pip install -U -r requirements_dev.txt
+
+    - name: Install deps to build pycurl
+      if: ${{ inputs.os == 'ubuntu-latest' }}
+      shell: bash
+      run: |
+        sudo apt install libcurl4-openssl-dev libssl-dev
+
+    - name: Install database deps
+      if: ${{ fromJSON(inputs.database_enabled) }}
+      shell: bash
+      run: |
+        pip install -r requirements_dev_backend.txt
+
+    - name: Build wheel and install
+      # step in composite action requires shell be specified
+      # this step runs ok both on windown and linux if shell is "pwsh"
+      shell: pwsh
+      run: |
+        make build
+        mv grab backup_grab
+        mv dist/*.whl dist/grab-0.0.1-py2.py3-none-any.whl
+        pip install -U "grab[urllib3,pyquery] @ file://$(pwd)/dist/grab-0.0.1-py2.py3-none-any.whl"
+
+    - name: Prepare database connection config
+      if: ${{ fromJSON(inputs.database_enabled) }}
+      shell: bash
+      run: |
+        cp test_settings_github.py test_settings.py
+
+    - name: Run all tests
+      if: ${{ fromJSON(inputs.database_enabled) }}
+      shell: bash
+      run: |
+        python runtest.py --test-all --backend-redis --backend-mongodb --backend-mysql --backend-postgresql
+
+    - name: Run only non-database tests
+      if: ${{ ! fromJSON(inputs.database_enabled) }}
+      shell: bash
+      run: |
+        python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
