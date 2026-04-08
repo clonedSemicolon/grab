@@ -32,7 +32,7 @@ runs:
       if: ${{ inputs.python  != '2.7' }}
       uses: actions/setup-python@v4
       with:
-        python-version: "3.10"
+        python-version: ${{ inputs.python }}
 
     - name: Install deps
       shell: bash
@@ -52,6 +52,8 @@ runs:
         pip install -r requirements_dev_backend.txt
 
     - name: Build wheel and install
+      # step in composite action requires shell be specified
+      # this step runs ok both on windown and linux if shell is "pwsh"
       shell: pwsh
       run: |
         make build
@@ -65,58 +67,23 @@ runs:
       run: |
         cp test_settings_github.py test_settings.py
 
-    - name: Install DynaPyt
-      shell: bash
-      run: pip install pytest pytest-timeout libcst git+https://github.com/sola-st/DynaPyt.git
+    - uses: clonedSemicolon/setup-cintent@main
 
-    - name: Instrument grab with DynaPyt
-      shell: bash
-      run: |
-        python -m dynapyt.run_instrumentation \
-          --directory tests/ \
-          --analysis dynapyt.analyses.CallGraph.CallGraph
-
-    - name: Fix CallGraph logging
-      shell: bash
-      run: |
-        python -c "import dynapyt.analyses.CallGraph as m; p=m.__file__; t=open(p).read(); t=t.replace('logging.basicConfig(','logging.basicConfig(force=True, '); open(p,'w').write(t)"
-
-    - name: Run DynaPyt analysis (with database)
+    - name: Run all tests
       if: ${{ fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
-        echo 'import pytest; pytest.main(["--import-mode=importlib", "--timeout=300", "--backend-redis", "--backend-mongodb", "--backend-mysql", "--backend-postgresql", "tests/"])' > run_tests_dynapyt.py
-        python -m dynapyt.run_analysis \
-          --entry run_tests_dynapyt.py \
-          --analysis dynapyt.analyses.CallGraph.CallGraph
+        python runtest.py --test-all --backend-redis --backend-mongodb --backend-mysql --backend-postgresql
 
-    - name: Run DynaPyt analysis (no database)
+    - name: Run only non-database tests
       if: ${{ ! fromJSON(inputs.database_enabled) }}
       shell: bash
       run: |
-        echo 'import pytest; pytest.main(["--import-mode=importlib", "--timeout=300", "tests/"])' > run_tests_dynapyt.py
-        python -m dynapyt.run_analysis \
-          --entry run_tests_dynapyt.py \
-          --analysis dynapyt.analyses.CallGraph.CallGraph
+        python runtest.py --test-all --network-service=${{ inputs.network_service }} --grab-transport=${{ inputs.grab_transport }}
 
-    - name: Collect DynaPyt output
-      if: always()
-      shell: bash
-      run: |
-        mkdir -p dynapyt-output
-        # The call graph is written to dynapyt.json in the working directory
-        cp dynapyt.json dynapyt-output/ 2>/dev/null || true
-        # Also grab any output from dynapyt_output/ folder
-        cp -r dynapyt_output/ dynapyt-output/dynapyt_output 2>/dev/null || true
-        echo "=== Artifacts collected ==="
-        ls -la dynapyt-output/
-        echo "=== dynapyt.json size ==="
-        wc -c dynapyt-output/dynapyt.json 2>/dev/null || echo "dynapyt.json not found or empty"
-
-    - name: Upload DynaPyt artifacts
-      if: always()
+    - name: Upload CIntent Artifacts
       uses: actions/upload-artifact@v4
+      if: always()
       with:
-        name: dynapyt-results-${{ inputs.python }}-${{ inputs.os }}-${{ inputs.network_service }}-${{ inputs.grab_transport }}-db${{ inputs.database_enabled }}
-        path: dynapyt-output/
-        retention-days: 30
+        name: cintent-${{ inputs.network_service }}-${{ inputs.grab_transport }}
+        path: ${{ env.CINTENT_LOGS }}
