@@ -3,14 +3,10 @@ name: DynaPyt CallGraph
 on:
   workflow_dispatch:
     inputs:
-      database_enabled:
-        description: "Enable database backends (redis, mongodb, mysql, postgresql)"
-        type: boolean
-        default: false
       network_service:
         description: "Network service for non-database tests"
         type: string
-        default: "httpbin"
+        default: "threaded"
       grab_transport:
         description: "Grab transport"
         type: string
@@ -22,22 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # DynaPyt requires Python >= 3.10
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      # ── Original project setup (unchanged from test-action) ─────────
+      # ── Project setup (same as test-action) ──────────────────
       - name: Install deps
         run: pip install -U -r requirements_dev.txt
 
       - name: Install deps to build pycurl
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
-
-      - name: Install database deps
-        if: ${{ inputs.database_enabled }}
-        run: pip install -r requirements_dev_backend.txt
 
       - name: Build wheel and install
         shell: pwsh
@@ -47,113 +38,21 @@ jobs:
           mv dist/*.whl dist/grab-0.0.1-py2.py3-none-any.whl
           pip install -U "grab[urllib3,pyquery] @ file://$(pwd)/dist/grab-0.0.1-py2.py3-none-any.whl"
 
-      - name: Prepare database connection config
-        if: ${{ inputs.database_enabled }}
-        run: cp test_settings_github.py test_settings.py
+      # ── DynaPyt ──────────────────────────────────────────────
+      - uses: clonedSemicolon/seytup-dynapyt@master
+        with:
+          directory: backup_grab/
 
-      # ── DynaPyt additions ───────────────────────────────────────────
-      - name: Install DynaPyt
-        run: pip install dynapyt libcst
-
-      - name: Instrument grab and tests with DynaPyt
+      - name: Run tests
         run: |
-          GRAB_PKG=$(python -c "import grab, os; print(os.path.dirname(grab.__file__))")
-          python -m dynapyt.run_instrumentation --directory "$GRAB_PKG" --analysis dynapyt.analyses.CallGraph.CallGraph
-          find "$GRAB_PKG" -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
-          python -m dynapyt.run_instrumentation --directory tests/ --analysis dynapyt.analyses.CallGraph.CallGraph
+          python runtest.py --test-all \
+            --network-service=${{ inputs.network_service }} \
+            --grab-transport=${{ inputs.grab_transport }}
 
-      # The built-in CallGraph.end_execution() writes via logging.info()
-      # but pytest reconfigures the root logger to WARNING, so the output
-      # is silently dropped => 0 bytes. This tiny subclass writes to file.
-      - name: Create patched CallGraph
-        run: |
-          cat > _patched_callgraph.py << 'EOF'
-          import json, os
-          from dynapyt.analyses.CallGraph import CallGraph
-          # Capture absolute output path at module import time so that
-          # any later os.chdir() inside tests cannot misdirect the write.
-          _OUT = os.path.join(os.environ.get("GITHUB_WORKSPACE", os.getcwd()), "dynapyt_callgraph.json")
-          class PatchedCallGraph(CallGraph):
-              def end_execution(self):
-                  try:
-                      data = json.dumps(self.graph, indent=2, default=str)
-                  except Exception:
-                      data = json.dumps({str(k): [str(v) for v in vs] for k, vs in self.graph.items()}, indent=2)
-                  with open(_OUT, "w") as f:
-                      f.write(data)
-                  print(f"[PatchedCallGraph] wrote {len(self.graph)} entries -> {_OUT}", flush=True)
-          EOF
-          python -c "import pathlib,textwrap;p=pathlib.Path('_patched_callgraph.py');p.write_text(textwrap.dedent(p.read_text()))"
-          # Verify the module is importable before the analysis run
-          python -c "import _patched_callgraph; print('PatchedCallGraph import OK')"
-
-      - name: Run tests with DynaPyt (with database)
-        if: ${{ inputs.database_enabled }}
-        env:
-          DYNAPYT_NETWORK_SERVICE: ${{ inputs.network_service }}
-          DYNAPYT_GRAB_TRANSPORT: ${{ inputs.grab_transport }}
-        run: |
-          cat > _entry.py << 'EOF'
-          import sys, os
-          _orig_exit = sys.exit
-          sys.exit = lambda code=0: None
-          sys.argv = [
-              "runtest.py", "--test-all",
-              "--network-service=" + os.environ.get("DYNAPYT_NETWORK_SERVICE", "tornado"),
-              "--grab-transport=" + os.environ.get("DYNAPYT_GRAB_TRANSPORT", "urllib3"),
-              "--backend-mongodb", "--backend-redis",
-              "--backend-mysql", "--backend-postgresql",
-          ]
-          import runtest
-          runtest.main()
-          sys.exit = _orig_exit
-          EOF
-          python -c "import pathlib,textwrap;p=pathlib.Path('_entry.py');p.write_text(textwrap.dedent(p.read_text()))"
-          python -m dynapyt.run_analysis --entry _entry.py --analysis _patched_callgraph.PatchedCallGraph
-
-      - name: Run tests with DynaPyt (no database)
-        if: ${{ !inputs.database_enabled }}
-        env:
-          DYNAPYT_NETWORK_SERVICE: ${{ inputs.network_service }}
-          DYNAPYT_GRAB_TRANSPORT: ${{ inputs.grab_transport }}
-        run: |
-          cat > _entry.py << 'EOF'
-          import sys, os
-          _orig_exit = sys.exit
-          sys.exit = lambda code=0: None
-          sys.argv = [
-              "runtest.py", "--test-all",
-              "--network-service=" + os.environ.get("DYNAPYT_NETWORK_SERVICE", "tornado"),
-              "--grab-transport=" + os.environ.get("DYNAPYT_GRAB_TRANSPORT", "urllib3"),
-          ]
-          import runtest
-          runtest.main()
-          sys.exit = _orig_exit
-          EOF
-          python -c "import pathlib,textwrap;p=pathlib.Path('_entry.py');p.write_text(textwrap.dedent(p.read_text()))"
-          python -m dynapyt.run_analysis --entry _entry.py --analysis _patched_callgraph.PatchedCallGraph
-
-      - name: Collect call graph
-        if: always()
-        run: |
-          mkdir -p dynapyt-output
-          # Primary location: workspace root (written by PatchedCallGraph via GITHUB_WORKSPACE)
-          cp "${GITHUB_WORKSPACE}/dynapyt_callgraph.json" dynapyt-output/ 2>/dev/null || true
-          # Fallback: search anywhere it may have landed
-          if [ ! -f dynapyt-output/dynapyt_callgraph.json ]; then
-            FOUND=$(find "$GITHUB_WORKSPACE" /tmp -maxdepth 4 -name "dynapyt_callgraph.json" 2>/dev/null | head -1)
-            [ -n "$FOUND" ] && cp "$FOUND" dynapyt-output/
-          fi
-          echo "=== dynapyt-output contents ==="
-          ls -la dynapyt-output/
-          echo "=== dynapyt_callgraph.json ==="
-          wc -c dynapyt-output/dynapyt_callgraph.json 2>/dev/null || echo "NOT FOUND — check run_analysis log above"
-          head -30 dynapyt-output/dynapyt_callgraph.json 2>/dev/null || true
-
-      - name: Upload call graph artifact
+      - name: Upload DynaPyt Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dynapyt-callgraph-grab
-          path: dynapyt-output/
+          name: dynapyt-grab-${{ inputs.network_service }}-${{ inputs.grab_transport }}
+          path: dynapyt.json
           retention-days: 30
